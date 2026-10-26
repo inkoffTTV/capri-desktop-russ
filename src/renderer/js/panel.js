@@ -276,10 +276,12 @@ export class Panel {
 
   renderChat(chat) {
     this.el.classList.toggle('is-chat', Boolean(chat));
+    this.el.classList.toggle('is-assistant', Boolean(chat?.assistant)); // a wider panel, paragraphs kept
     this.line.classList.remove('is-streaming');
     this.chatForm.hidden = !chat;
     this.note.hidden = !chat?.note;
     if (!chat) return;
+    this.chatInput.maxLength = chat.assistant ? 4000 : 500;
     this.chatInput.type = chat.secret ? 'password' : 'text';
     this.chatInput.placeholder = chat.placeholder;
     this.chatInput.setAttribute('aria-label', chat.placeholder);

@@ -31,6 +31,13 @@ const PROVIDERS = {
 // no bypassPermissions: a chat bubble on the desktop shouldn't run anything without asking
 const CLAUDE_MODES = ['default', 'acceptEdits'];
 
+// How she answers (config.chatMode): in character, a few lines; or as a proper assistant, at length.
+const MODES = {
+  capri: { temperature: 0.85, maxTokens: 240 },
+  assistant: { temperature: 0.6, maxTokens: 1500 },
+};
+const tuning = (mode) => MODES[mode] || MODES.capri;
+
 function endpoint(id, cfg) {
   const p = PROVIDERS[id];
   const url = (id === 'custom' ? cfg.customUrl : p.url) || '';
@@ -70,11 +77,12 @@ function warm(id, model) {
 }
 
 // OpenAI-style streaming (server-sent events): onDelta(piece) as it comes, resolves with all of it.
-async function openaiChat(p, { model, messages }, onDelta, signal) {
+async function openaiChat(p, { model, messages, mode }, onDelta, signal) {
+  const tune = tuning(mode);
   const res = await fetch(`${p.url}/chat/completions`, {
     method: 'POST',
     headers: headers(p.key),
-    body: JSON.stringify({ model, messages, stream: true }),
+    body: JSON.stringify({ model, messages, stream: true, temperature: tune.temperature, max_tokens: tune.maxTokens }),
     signal,
   });
   if (!res.ok) throw await failure(res);
@@ -189,12 +197,12 @@ function restoreClaude(saved) {
 
 const isChatSession = (id) => Boolean(id) && id === claudeSession;
 
-async function chat(id, cfg, { model, messages }, onDelta, signal) {
+async function chat(id, cfg, { model, messages, mode }, onDelta, signal) {
   const p = endpoint(id, cfg);
-  if (p.kind === 'ollama') return ollama.chat({ model, messages }, onDelta, signal);
+  if (p.kind === 'ollama') return ollama.chat({ model, messages, options: tuning(mode) }, onDelta, signal);
   // Claude Code keeps its own memory of the conversation: only her persona and your last message go
   if (p.kind === 'claude') return claudeChat(cfg, messages.at(-1).content, messages[0].content, onDelta, signal);
-  return openaiChat(p, { model, messages }, onDelta, signal);
+  return openaiChat(p, { model, messages, mode }, onDelta, signal);
 }
 
 // Whether her answers stay on this PC: a server on this machine.
@@ -204,4 +212,4 @@ function isLocal(id, cfg) {
   return Boolean(PROVIDERS[id].local);
 }
 
-module.exports = { isLocal, PROVIDERS, CLAUDE_MODES, models, warm, chat, resetClaude, isChatSession, claudeMemory, restoreClaude };
+module.exports = { isLocal, PROVIDERS, CLAUDE_MODES, MODES, models, warm, chat, resetClaude, isChatSession, claudeMemory, restoreClaude };

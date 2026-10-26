@@ -1,4 +1,6 @@
-[English](README.md) · **Français**
+[Русский](README.md) · [English](README.en.md) · **Français**
+
+> Édition russe de [mochiiwuff/capri-desktop](https://github.com/mochiiwuff/capri-desktop) (MIT), avec un README en russe et un **mode assistante** détaillé pour son chat. Tout le reste est l'original, tenu à jour.
 
 # Capri
 
@@ -150,6 +152,11 @@ continuant la même conversation, et ses hooks montrent ce qu'il fait. Dans ce c
 lire (personne n'est là pour dire oui) ; `acceptEdits` le laisse modifier des fichiers sans demander. **Oublier nos
 conversations** efface ce qu'elle a retenu de vos discussions.
 
+**Ses réponses** (son menu › **Modèle IA**, tout en haut) : **Dans son rôle (courtes)**, une à trois phrases en
+Capri ; ou **Assistante (détaillées)**, une vraie assistante IA. Questions, explications, code, textes, traductions,
+plans : elle répond aussi longuement qu'il le faut, dans un panneau plus large qui garde paragraphes et listes.
+Toujours Capri, mais l'aide d'abord. Pas besoin d'abonnement Claude pour ça : un modèle local (Ollama, LM Studio…) suffit.
+
 **C'est une IA.** Ses réponses sont écrites par le modèle, pas par les scénaristes de la série : c'est une version
 fan d'elle, et le panneau du chat le dit à chaque fois.
 
@@ -205,7 +212,7 @@ système. Tu peux en choisir une autre dans son menu.
 
 ### Démarrage rapide (Windows, sans coder)
 
-1. Télécharge **`Capri-Setup-x.y.z.exe`** dans la [dernière release](https://github.com/mochiiwuff/capri-desktop/releases/latest)
+1. Télécharge **`Capri-Setup-x.y.z.exe`** dans la [dernière release](https://github.com/inkoffTTV/capri-desktop-russ/releases/latest)
    et lance-le. Il s'installe pour ton utilisateur seulement (pas besoin d'être administrateur), ajoute un raccourci
    sur le bureau et lance Capri. Pas besoin de Node.js ni de rien d'autre.
 2. L'installeur n'est pas signé (un certificat de signature, c'est payant), donc Windows SmartScreen peut afficher
@@ -231,8 +238,8 @@ s'endort. Tu peux juste la laisser là.
 Il faut [Node.js](https://nodejs.org) 20 ou plus.
 
 ```bash
-git clone https://github.com/mochiiwuff/capri-desktop.git
-cd capri-desktop
+git clone https://github.com/inkoffTTV/capri-desktop-russ.git
+cd capri-desktop-russ
 npm install
 npm start
 ```

@@ -117,9 +117,10 @@ export class Guide {
       const w = this.brain.t.welcome;
       const [hooks, found] = await Promise.all([this.host.hooksStatus(), this.host.claudeFound()]);
       if (!this.brain.watching) {
-        // not watching Claude Code: she's just here to keep you company
+        // not watching Claude Code: she's here to keep you company, and to talk, through her AI
         this.capri.perform('curious', this.capri.towardCenter());
-        await this.ask({ face: 'grin', line: w.hi, quote: `${w.alone}\n${w.menu}`, actions: [{ id: 'ok', label: w.ok, primary: true }] });
+        const id = await this.ask({ face: 'grin', line: w.hi, quote: `${w.alone}\n${w.menu}`, actions: [{ id: 'talk', label: this.brain.t.chat.talk, primary: true }, { id: 'ok', label: w.ok }] });
+        talk = id === 'talk';
       } else if (hooks.installed) {
         this.capri.perform('curious', this.capri.towardCenter());
         const id = await this.ask({ face: 'look', line: w.ready, quote: w.readyHow, actions: [{ id: 'ok', label: w.ok, primary: true }, { id: 'more', label: this.t.more }] });
@@ -134,11 +135,15 @@ export class Guide {
           actions: [
             { id: 'claude', label: w.whatClaude, primary: true },
             ...(this.freeWay ? [{ id: 'free', label: this.brain.t.setup.free }] : []),
+            { id: 'talk', label: this.brain.t.chat.talk }, // no Claude Code at all: her chat, through a model of yours
             { id: 'later', label: w.justHang },
           ],
         });
         if (id === 'free') {
           await this.setup.freeNow();
+        } else if (id === 'talk') {
+          this.host.setConfig({ claude: false }); // just her and her AI: no more word of Claude (her menu turns it back on)
+          talk = true;
         } else if (id === 'claude') {
           this.host.openClaudeHelp();
           await this.ask({ face: 'smug', line: w.hi, quote: w.afterInstall, actions: [{ id: 'ok', label: w.ok }] });

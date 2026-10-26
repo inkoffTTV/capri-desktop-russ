@@ -301,6 +301,12 @@ function rebuildTray() {
       submenu: [
         { label: t.aiSetup, click: () => sendCommand('setupChat') },
         { type: 'separator' },
+        // how she answers: a few lines in character, or a proper assistant at length
+        { label: t.aiMode, enabled: false },
+        ...[['capri', t.modeCapri], ['assistant', t.modeAssistant]].map(([chatMode, label]) => ({
+          label, type: 'radio', checked: (cfg.chatMode || 'capri') === chatMode, click: () => updateConfig({ chatMode }),
+        })),
+        { type: 'separator' },
         ...Object.entries(llm.PROVIDERS).map(([provider, p]) => ({
           label: p.label, type: 'radio', checked: cfg.provider === provider, click: () => pickProvider(provider),
         })),
@@ -478,16 +484,16 @@ function registerIpc() {
     if (!models) return { ok: false, error: chatError || 'offline', code: chatErrorCode, provider };
     if (!models.length) return { ok: false, error: 'nomodel', provider };
     llm.warm(provider, pickModel()); // loading while you type your first message
-    return { ok: true, provider, model: pickModel(), agent: provider === 'claude', local: llm.isLocal(provider, cfg), warmup: provider === 'ollama' };
+    return { ok: true, provider, model: pickModel(), agent: provider === 'claude', local: llm.isLocal(provider, cfg), warmup: provider === 'ollama', mode: cfg.chatMode === 'assistant' ? 'assistant' : 'capri' };
   });
   // her answer, streamed to the overlay piece by piece as `chat:delta`
-  ipcMain.handle('chat:send', async (_e, { id, messages }) => {
+  ipcMain.handle('chat:send', async (_e, { id, messages, mode }) => {
     const abort = new AbortController();
     chats.set(id, abort);
     try {
       const send = (text) => overlay?.webContents.send('chat:delta', { id, text });
       const cfg = config.load();
-      const text = await llm.chat(cfg.provider, llmConfig(cfg), { model: pickModel(), messages }, send, abort.signal);
+      const text = await llm.chat(cfg.provider, llmConfig(cfg), { model: pickModel(), messages, mode: mode || cfg.chatMode }, send, abort.signal);
       if (cfg.provider === 'claude') saveMemory({ claude: llm.claudeMemory() });
       return { ok: true, text };
     } catch (err) {

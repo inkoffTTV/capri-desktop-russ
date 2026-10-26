@@ -68,6 +68,7 @@ export class Chat {
     this.open = false;
     this.turn = 0;     // id of the answer coming in, if any
     this.answer = '';
+    this.mode = 'capri'; // how she answers, as of the last chat opened: 'capri' (in character) or 'assistant'
     this.apps = [];    // the apps open on this PC, as last listed: [{ name, label }]
     this.appsReady = Promise.resolve();
     this.onSetup = null; // (status) => void: she can't answer yet (app.js hands it to setup.js)
@@ -91,6 +92,7 @@ export class Chat {
     }
     capri.wake();
     const status = await host.chatStatus();
+    this.mode = status.mode === 'assistant' ? 'assistant' : 'capri'; // how she answers (her menu)
     if (!status.ok && this.onSetup) {
       this.onSetup(status); // nothing to talk with yet: she sets it up with you, with buttons (setup.js)
       return;
@@ -127,7 +129,7 @@ export class Chat {
     const shown = this.panel.say({
       kind: 'chat',
       face: 'look',
-      badge: t.badge,
+      badge: this.mode === 'assistant' ? t.badgeAssistant : t.badge,
       tag: shortModel,
       line: tiny ? fmt(t.tiny, { model: shortModel }) : pick(this.history.length ? t.again : t.hello),
       actions: tiny ? [{ id: 'better', label: t.better, primary: true }] : [],
@@ -141,6 +143,7 @@ export class Chat {
         close: t.close,
         noteTag: t.noteTag,
         note: status.local ? t.note : t.noteCloud,
+        assistant: this.mode === 'assistant', // a wider panel, paragraphs kept
       },
       onSend: (text) => this.send(text),
       onLeave: () => this.close(),
@@ -188,7 +191,7 @@ export class Chat {
     const slow = wait && setTimeout(() => {
       if (this.turn === id && !this.answer) this.panel.stream(wait);
     }, LOADING_AFTER_MS);
-    const res = await this.host.chatSend({ id, messages });
+    const res = await this.host.chatSend({ id, messages, mode: this.mode });
     clearTimeout(slow);
     if (this.turn !== id) {
       // closed meanwhile: your message goes too, or the next answer would answer it as well
@@ -203,7 +206,7 @@ export class Chat {
       this.panel.setChatBusy(false);
       return;
     }
-    const answer = clean(res.text) || '…';
+    const answer = clean(res.text, this.mode) || '…';
     this.warm = true;
     this.remember({ role: 'assistant', content: answer });
     this.panel.stream(answer, { done: true });
@@ -440,7 +443,7 @@ export class Chat {
   onDelta(id, piece) {
     if (id !== this.turn) return;
     this.answer += piece;
-    this.panel.stream(clean(this.answer));
+    this.panel.stream(clean(this.answer, this.mode));
     this.voice.play('blip'); // her blips as the words come in
   }
 
@@ -455,8 +458,16 @@ export class Chat {
         ? `You live on the user's desktop as a small glitchy figure and keep an eye on ${assistant}, their AI coding assistant, for them. Only talk about ${assistant} when the user asks about it or about their work.`
         : 'You live on the user\'s desktop as a small glitchy figure and keep them company.',
       'You love the satellite that crosses the night sky and dream of reaching it, but bring it up only once in a while, never in every answer. Talk about what the user talks about.',
-      'How you talk: playful, a little mischievous and teasing, warm underneath, never cruel. Night City slang now and then (choom, preem, nova, gonk, flatline), not in every sentence.',
-      'Rules: keep it short, one to three sentences of plain text, no markdown, no lists, no emoji. Stay in character.',
+      ...(this.mode === 'assistant' && !this.agent
+        // a proper assistant (her menu): the help first, at length when it takes it, her voice kept light
+        ? [
+          'You are also the user\'s personal AI assistant: help with anything they ask (questions, explanations, code, writing, planning, translations), accurately and completely, like a capable assistant would. Your playful voice stays, lightly: a touch of teasing or Night City slang (choom, preem, nova) is fine, but the help comes first and never gets drowned in it.',
+          'Rules: be as long as the answer needs, no longer: short for small talk, several paragraphs or steps for real questions. Plain text: no markdown headers, no bold or italics, no emoji. Lists as plain lines starting with "-" are fine; code as plain lines, indented, without backtick fences. Say when you\'re not sure instead of making things up.',
+        ]
+        : [
+          'How you talk: playful, a little mischievous and teasing, warm underneath, never cruel. Night City slang now and then (choom, preem, nova, gonk, flatline), not in every sentence.',
+          'Rules: keep it short, one to three sentences of plain text, no markdown, no lists, no emoji. Stay in character.',
+        ]),
       'You are an AI-generated fan version of the character, not the real one: say so if asked.',
       ...this.personal(),
       ...(this.agent
@@ -469,13 +480,24 @@ export class Chat {
 }
 
 // The model's answer as she'd say it: no reasoning block, no markdown marks.
-function clean(text) {
-  return String(text)
+// As an assistant, her answer can hold code and names with underscores: only the marks that are
+// surely markdown go (emphasis, headers, code fences), the rest stays as written.
+function clean(text, mode = 'capri') {
+  let out = String(text)
     .replace(/<think>[\s\S]*?(<\/think>|$)/g, '')
-    .replace(/\[\[[^\]]*(\]\]|$)/g, '') // her tags (read from the raw answer, never shown)
-    .replace(/[*_`#]+/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .trim();
+    .replace(/\[\[[^\]]*(\]\]|$)/g, ''); // her tags (read from the raw answer, never shown)
+  if (mode === 'assistant') {
+    out = out
+      .replace(/^[ \t]*```[^\n]*$/gm, '')      // code fences: the code stays, as plain lines
+      .replace(/^#{1,6}[ \t]+/gm, '')          // headers
+      .replace(/\*\*([^*\n]+)\*\*/g, '$1')     // bold
+      .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, '$1$2') // italics, not a * in code
+      .replace(/`([^`\n]*)`/g, '$1')           // inline code
+      .replace(/\n{3,}/g, '\n\n');
+  } else {
+    out = out.replace(/[*_`#]+/g, '');
+  }
+  return out.replace(/[ \t]+\n/g, '\n').trim();
 }
 
 // Whether your message asks for what her tag (its kind: open, music, media, site, close) would do.

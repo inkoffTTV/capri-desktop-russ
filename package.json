@@ -1,9 +1,9 @@
 {
-  "name": "capri-desktop",
+  "name": "capri-desktop-russ",
   "version": "0.4.0",
-  "description": "Capri, the Project Capricorn construct, living on your desktop and narrating what Claude Code is doing.",
+  "description": "Capri, the Project Capricorn construct, living on your desktop: she narrates what your coding AI is doing and talks with you through a local AI model. Russian edition of mochiiwuff/capri-desktop.",
   "author": "mochiiwuff",
-  "repository": "github:mochiiwuff/capri-desktop",
+  "repository": "github:inkoffTTV/capri-desktop-russ",
   "main": "src/main/main.js",
   "private": true,
   "scripts": {

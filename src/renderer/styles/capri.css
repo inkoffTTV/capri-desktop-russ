@@ -681,6 +681,22 @@ html[data-motion='reduced'] .panel__bar {
   100% { text-shadow: none; }
 }
 
+/* as an assistant (her menu): a wider panel, her paragraphs and lists kept, more of them on screen */
+.panel.is-chat.is-assistant {
+  width: clamp(380px, 32vw, 620px);
+}
+
+.panel.is-chat.is-assistant .panel__line {
+  max-height: min(56vh, 600px);
+  font-size: calc(var(--text-line) - 1px);
+  line-height: 1.3;
+  white-space: pre-wrap;
+}
+
+.panel.is-chat.is-assistant .panel__quote {
+  -webkit-line-clamp: 4;
+}
+
 /* her answer coming in: a block cursor at its end, on twos */
 .panel__line.is-streaming::after {
   content: '▌';
