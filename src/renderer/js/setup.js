@@ -246,8 +246,14 @@ export class Setup {
     });
     if (got?.action === 'other') return this.choose(null);
     if (!got?.text) return false;
+    // a key too, if the server wants one (a hosted gateway): skippable for a local one
+    const keyed = await this.guide.askText({
+      face: 'look', line: t.customKey, quote: t.customKeyHow, secret: true, placeholder: t.placeholder, tag: t.keyTag, note: t.keyNote,
+      actions: [{ id: 'skip', label: t.later }],
+    });
+    if (keyed === null) return false; // closed
     this.working(t.checking);
-    const res = await this.host.useProvider({ provider: 'custom', url: got.text });
+    const res = await this.host.useProvider({ provider: 'custom', url: got.text, key: keyed?.action === 'skip' ? '' : keyed?.text || '' });
     return res.ok ? this.done() : this.address(res.error);
   }
 
