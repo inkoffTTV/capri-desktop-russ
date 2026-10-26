@@ -452,6 +452,7 @@ function createTray() {
   tray = new Tray(icon);
   tray.setToolTip('Capri');
   tray.on('click', () => sendCommand('status'));
+  tray.on('right-click', () => refreshModels()); // the menu pops on its own; fresh models for the next time
   rebuildTray();
 }
 
@@ -470,7 +471,10 @@ function registerIpc() {
   ipcMain.handle('config:set', (_e, patch) => updateConfig(patch));
   ipcMain.handle('demo:window', (_e, open) => demoWindow(open));
   // right-clicking her: the same menu as the tray icon (which Windows often hides behind the ^ by the clock)
-  ipcMain.on('menu:open', () => trayMenu?.popup({ window: overlay }));
+  ipcMain.on('menu:open', () => {
+    trayMenu?.popup({ window: overlay });
+    refreshModels(); // a model pulled meanwhile shows up next time the menu opens
+  });
   // her welcome panel's buttons
   ipcMain.handle('hooks:install', () => runHooks('install', { quiet: true }));
   ipcMain.handle('claude:found', () => fs.existsSync(path.dirname(activeHooks().status().file))); // Claude Code keeps its settings there
