@@ -494,13 +494,23 @@ function registerIpc() {
   ipcMain.handle('chat:send', async (_e, { id, messages, mode }) => {
     const abort = new AbortController();
     chats.set(id, abort);
+    const cfg = config.load();
+    const model = pickModel();
+    const t0 = Date.now();
+    // --dev: what goes to the model, in the terminal (CAPRI_LOG_PROMPT=1 for the whole text of it)
+    if (DEV) {
+      const chars = messages.reduce((n, m) => n + String(m.content).length, 0);
+      console.log(`[chat] -> ${cfg.provider} / ${model} · ${messages.length} messages · ${chars} chars · mode ${mode || cfg.chatMode}`);
+      if (process.env.CAPRI_LOG_PROMPT) for (const m of messages) console.log(`[chat]    ${m.role}: ${m.content}`);
+    }
     try {
       const send = (text) => overlay?.webContents.send('chat:delta', { id, text });
-      const cfg = config.load();
-      const text = await llm.chat(cfg.provider, llmConfig(cfg), { model: pickModel(), messages, mode: mode || cfg.chatMode }, send, abort.signal);
+      const text = await llm.chat(cfg.provider, llmConfig(cfg), { model, messages, mode: mode || cfg.chatMode }, send, abort.signal);
       if (cfg.provider === 'claude') saveMemory({ claude: llm.claudeMemory() });
+      if (DEV) console.log(`[chat] <- ${text.length} chars in ${((Date.now() - t0) / 1000).toFixed(1)} s${process.env.CAPRI_LOG_PROMPT ? `\n[chat]    assistant: ${text}` : ''}`);
       return { ok: true, text };
     } catch (err) {
+      if (DEV) console.log(`[chat] !! ${abort.signal.aborted ? 'stopped' : err.message} after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
       return { ok: false, error: abort.signal.aborted ? 'stopped' : err.message };
     } finally {
       chats.delete(id);
