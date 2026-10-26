@@ -182,7 +182,10 @@ export class Setup {
   }
 
   progress(p) {
-    if (p.kind !== 'pull' || !this.pulling || !p.total || this.panel.current?.kind !== 'work') return;
+    if (this.panel.current?.kind !== 'work') return;
+    // winget installing Ollama: its last line under hers, so a long download doesn't look stuck
+    if (p.kind === 'install' && p.line) return this.panel.setQuote(`${this.t.installingHow}\n${p.line.slice(0, 120)}`);
+    if (p.kind !== 'pull' || !this.pulling || !p.total) return;
     const k = p.completed / p.total;
     this.panel.setProgress(k);
     this.panel.setQuote(fmt(this.t.progress, { done: this.size(p.completed), total: this.size(p.total), percent: Math.floor(k * 100) }));
