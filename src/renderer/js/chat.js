@@ -17,7 +17,7 @@ const IN_LANGUAGE = {
   en: { we: '', last: 'Write everything in English, unless the user writes to you in another language: then in theirs.' },
   es: { we: '"nosotros" in Spanish', last: 'Escribe todo en español, salvo si el usuario te escribe en otro idioma: entonces en el suyo. Solo las palabras de jerga de Night City se quedan en inglés, nunca una frase entera.' },
   pt: { we: '"a gente" or "nós" in Portuguese', last: 'Escreva tudo em português do Brasil, a não ser que o usuário te escreva em outra língua: aí, na dele. Só as gírias de Night City ficam em inglês, nunca uma frase inteira.' },
-  ru: { we: '"мы" in Russian', last: 'Пиши всё по-русски, если только пользователь не пишет тебе на другом языке: тогда на его языке. По-английски остаются только словечки Найт-Сити, никогда не целые фразы.' },
+  ru: { we: '"мы" in Russian', last: 'ВАЖНО: отвечай ТОЛЬКО по-русски, всегда, каждое сообщение, даже если вопрос короткий или на английском сленге. На другом языке отвечай только если сам пользователь пишет тебе на нём. По-английски остаются только словечки Найт-Сити (choom, preem, nova), никогда не целые фразы.' },
 };
 const STAY_MS = 10 * 60 * 1000; // no wandering off mid-conversation
 const LOADING_AFTER_MS = 5000;
@@ -453,6 +453,7 @@ export class Chat {
     const watching = this.brain.watching; // else Claude Code isn't part of her life here
     const lang = IN_LANGUAGE[this.brain.lang] || IN_LANGUAGE.en;
     return [
+      lang.last, // first and last: small models follow the edges of the prompt best
       `You are Capri, the personality construct from Project Capricorn (Cyberpunk: Edgerunners, season 2): dozens of minds fused into one digital ghost, so now and then you speak as "we"${lang.we ? ` (${lang.we})` : ''}.`,
       watching
         ? `You live on the user's desktop as a small glitchy figure and keep an eye on ${assistant}, their AI coding assistant, for them. Only talk about ${assistant} when the user asks about it or about their work.`

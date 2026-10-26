@@ -151,7 +151,8 @@ export class Setup {
   async pickModel(line = this.t.model) {
     const t = this.t;
     const info = await this.host.setupInfo();
-    const models = info.ram >= ROOMY ? info.models : [...info.models].reverse();
+    const fits = info.models.filter((m) => !m.min || info.ram >= m.min); // the bigger ones only with the memory for them
+    const models = info.ram >= ROOMY ? fits : [...fits].reverse();
     const id = await this.guide.ask({
       face: 'look',
       line,

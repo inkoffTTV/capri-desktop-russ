@@ -39,6 +39,9 @@ function warm(model) {
 }
 
 // Her answer, streamed: onDelta(piece) as it comes, resolves with all of it.
+// models with a thinking mode Ollama can switch off
+const THINKERS = /^(gemma4|qwen3|deepseek-r1|gpt-oss|magistral)/i;
+
 async function chat({ model, messages, options = {} }, onDelta, signal) {
   const { temperature = 0.85, maxTokens = 240 } = options; // longer as an assistant (llm.js MODES)
   const res = await fetch(`${base()}/api/chat`, {
@@ -50,6 +53,8 @@ async function chat({ model, messages, options = {} }, onDelta, signal) {
       stream: true,
       keep_alive: '15m', // she stays loaded while you chat
       options: { temperature, num_predict: maxTokens },
+      // a thinking model would reason first (dropped below anyway) and answer late: straight to the answer
+      ...(THINKERS.test(model) && { think: false }),
     }),
     signal,
   });

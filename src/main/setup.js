@@ -15,9 +15,12 @@ const ollama = require('./ollama');
 const WIN = process.platform === 'win32';
 
 // The models she offers for her chat, with what they weigh (as Ollama lists them)
+// `min`: the RAM it takes to be worth offering (bytes); bigger first, the renderer trims to the PC
 const MODELS = [
-  { name: 'gemma3:4b', bytes: 3.3e9 }, // better in languages other than English
-  { name: 'llama3.2', bytes: 2.0e9 },  // lighter
+  { name: 'gemma4:26b-a4b', bytes: 16e9, min: 28 * 2 ** 30 }, // the smart one: 26B, 4B active, so it stays quick from RAM
+  { name: 'gemma4:12b', bytes: 7.7e9, min: 12 * 2 ** 30 },    // fits an 8 GB graphics card
+  { name: 'gemma3:4b', bytes: 3.3e9 },                         // better in languages other than English
+  { name: 'llama3.2', bytes: 2.0e9 },                          // lighter
 ];
 
 // Where to get a key, by provider (llm.js)
