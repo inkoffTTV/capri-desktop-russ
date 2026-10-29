@@ -246,6 +246,9 @@ export class Chat {
         noteTag: t.noteTag,
         note: status.local ? t.note : t.noteCloud,
         assistant: this.mode === 'assistant', // a wider panel, paragraphs kept
+        history: this.history.slice(-12), // the conversation so far, above her answer
+        copy: this.brain.t.report.copy, // her answers can be copied
+        copied: this.brain.t.report.copied,
       },
       onSend: (text) => this.send(text),
       onLeave: () => this.close(),

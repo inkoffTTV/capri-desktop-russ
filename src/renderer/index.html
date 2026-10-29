@@ -14,6 +14,8 @@
 
   <canvas id="fx" class="fx" aria-hidden="true"></canvas>
 
+  <div id="wheel" class="wheel" hidden></div>
+
   <canvas id="chip" class="chip" hidden aria-label="Capri’s biochip"></canvas>
   <canvas id="mask" class="chip" hidden aria-label="Capri, asleep"></canvas>
 
@@ -29,7 +31,9 @@
             <span class="panel__tag"></span>
             <span class="panel__state"></span>
           </header>
+          <ol class="panel__thread" hidden></ol>
           <p class="panel__line"></p>
+          <button class="panel__copy" type="button" hidden>⧉</button>
           <p class="panel__quote" hidden></p>
           <div class="panel__progress" hidden><span class="panel__bar"></span></div>
           <div class="panel__reply" hidden></div>
@@ -38,7 +42,7 @@
           <ol class="panel__log" hidden></ol>
           <div class="panel__actions" hidden></div>
           <form class="panel__chat" hidden autocomplete="off">
-            <input class="panel__input" type="text" maxlength="500" spellcheck="false">
+            <textarea class="panel__input" rows="1" maxlength="500" spellcheck="false"></textarea>
             <button class="panel__action is-primary panel__send" type="submit"></button>
             <button class="panel__action panel__close" type="button">✕</button>
           </form>

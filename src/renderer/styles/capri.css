@@ -667,6 +667,108 @@ html[data-motion='reduced'] .panel__bar {
   scrollbar-color: var(--violet) transparent;
 }
 
+/* the conversation so far, above her answer: your lines as prompts, hers along a violet rule */
+.panel.is-chat:not(.is-guide) .panel__thread {
+  order: -2;
+  list-style: none;
+  margin: 0 0 9px;
+  padding: 0 6px 6px 0;
+  max-height: min(22vh, 220px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-data);
+  line-height: 1.55;
+  color: var(--paper-3);
+  scrollbar-width: thin;
+  scrollbar-color: var(--violet) transparent;
+  user-select: text;
+}
+
+.panel.is-chat.is-assistant .panel__thread {
+  max-height: min(30vh, 320px);
+}
+
+.thread__turn {
+  position: relative;
+  margin: 0 0 5px;
+  padding-right: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.thread__turn.is-you {
+  color: var(--paper-2);
+}
+
+.thread__turn.is-you::before {
+  content: '> ';
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.thread__turn.is-her {
+  padding-left: 9px;
+  border-left: 2px solid var(--violet);
+}
+
+.thread__copy,
+.panel__copy {
+  appearance: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: var(--ink-2);
+  color: var(--paper-3);
+  font: 600 12px/20px var(--font-mono);
+  cursor: pointer;
+  opacity: 0;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition: opacity 120ms var(--ease-out), background 120ms var(--ease-out), color 120ms var(--ease-out);
+}
+
+.thread__turn:hover .thread__copy,
+.thread__copy:focus-visible,
+.panel.is-chat .panel__line:hover + .panel__copy,
+.panel__copy:hover,
+.panel__copy:focus-visible {
+  opacity: 1;
+}
+
+.thread__copy:hover,
+.panel__copy:hover {
+  background: var(--violet);
+  color: var(--paper);
+}
+
+.thread__copy.is-done,
+.panel__copy.is-done {
+  background: var(--green);
+  color: var(--ink);
+  opacity: 1;
+}
+
+/* her finished answer's copy button: under it, at the right */
+.panel.is-chat .panel__copy {
+  position: static;
+  align-self: flex-end;
+  margin: 3px 0 0;
+  opacity: 1;
+}
+
+.panel__copy[hidden] {
+  display: none;
+}
+
+.panel.is-chat .panel__line {
+  user-select: text;
+}
+
 /* her answer arrived: a short jolt of split colours and sideways slices, on twos */
 .panel__line.is-glitching {
   animation: line-glitch 420ms steps(1, end) 1;
@@ -726,6 +828,21 @@ html[data-motion='reduced'] .panel__bar {
   user-select: text;
   outline: none;
   clip-path: polygon(7px 0, 100% 0, 100% 100%, 0 100%, 0 7px);
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  max-height: 168px; /* about seven lines; Shift+Enter for a new one */
+  field-sizing: content;
+  scrollbar-width: thin;
+  scrollbar-color: var(--violet) transparent;
+}
+
+.panel__input.is-secret {
+  -webkit-text-security: disc;
+}
+
+.panel__chat {
+  align-items: flex-end; /* the buttons stay at the bottom as the line grows */
 }
 
 .panel__input::placeholder {
@@ -789,6 +906,92 @@ html[data-motion='reduced'] .panel__bar {
   top: auto;
   bottom: calc(100% - 1px);
   transform: scaleY(-1);
+}
+
+/* ---------- her wheel (wheel.js) ---------- */
+
+.wheel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  width: 240px;
+  height: 240px;
+  filter: drop-shadow(4px 4px 0 var(--violet));
+  will-change: transform;
+}
+
+.wheel[hidden] {
+  display: none;
+}
+
+.wheel__ring {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.wheel__halo {
+  fill: none;
+  stroke: var(--violet);
+  stroke-width: 0.8;
+  stroke-dasharray: 3 5;
+  opacity: 0.7;
+}
+
+.wheel__sector {
+  cursor: pointer;
+}
+
+.wheel__slice {
+  fill: var(--ink);
+  fill-opacity: 0.94;
+  stroke: var(--violet);
+  stroke-width: 1.2;
+  transition: fill 120ms var(--ease-out), stroke 120ms var(--ease-out);
+}
+
+.wheel__sector.is-hot .wheel__slice {
+  stroke: var(--green);
+}
+
+.wheel__sector.is-hover .wheel__slice {
+  fill: var(--green);
+  stroke: var(--paper);
+}
+
+.wheel__icon {
+  fill: var(--green);
+  font: 600 13px var(--font-display);
+  pointer-events: none;
+}
+
+.wheel__label {
+  fill: var(--paper);
+  font: 600 7.4px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.wheel__label.is-l1 { font-size: 6.8px; }
+.wheel__label.is-l2 { font-size: 6px; }
+.wheel__label.is-l3 { font-size: 5.2px; }
+
+.wheel__sector.is-hover .wheel__icon,
+.wheel__sector.is-hover .wheel__label {
+  fill: var(--ink);
+}
+
+/* it snaps on like her panel: a couple of drawings of split colours and a jump in scale */
+.wheel.is-entering {
+  animation: wheel-in 260ms steps(1, end) 1;
+}
+
+@keyframes wheel-in {
+  0% { transform: scale(0.72); filter: drop-shadow(4px 0 0 var(--red)) drop-shadow(-4px 0 0 var(--blue)); }
+  40% { filter: drop-shadow(-3px 0 0 var(--red)) drop-shadow(3px 0 0 var(--blue)); }
+  70% { filter: drop-shadow(4px 4px 0 var(--violet)); }
 }
 
 /* ---------- ticker ---------- */

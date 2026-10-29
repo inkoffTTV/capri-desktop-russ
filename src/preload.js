@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('host', {
   lookWhere: () => ipcRenderer.invoke('look:where'),
   cpu: () => ipcRenderer.invoke('pc:cpu'),
   openOllama: () => ipcRenderer.send('chat:ollama'),
+  copyText: (text) => ipcRenderer.invoke('clipboard:text', String(text)), // her answer, copied from her chat
   setupInfo: () => ipcRenderer.invoke('setup:info'),
   ollamaState: () => ipcRenderer.invoke('setup:ollama'),
   installOllama: () => ipcRenderer.invoke('setup:install'),

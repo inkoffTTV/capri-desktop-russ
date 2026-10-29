@@ -53,6 +53,8 @@ export const LINES = {
     someTool: 'L’outil', someAgent: 'agent', // un outil, un sous-agent sans nom
     compact: ['Je compresse nos souvenirs…', 'Trop de mémoire. Je fais le tri.'],
     // lui parler (chat.js) : un modèle local via Ollama ; réponses et voix générées par IA, et c'est dit
+    // her wheel (wheel.js): middle-click on her, or holding her still
+    wheel: { talk: 'Parler', status: 'Statut', report: 'Rapport', satellite: 'Satellite', capri: 'En rôle', assistant: 'Assistante', hide: 'Ranger', teleport: 'Téléport', menu: 'Menu' },
     chat: {
       badge: 'IA · DIRECT', badgeAssistant: 'IA · ASSIST', talk: 'Parle-moi',
       hello: ['Salut, choom. Qu’est-ce qui te trotte dans la tête ?', 'La ligne est ouverte. Parle-nous.', 'Tu veux discuter ? On est tout ouïe. Toutes nos oreilles.'],
@@ -404,6 +406,8 @@ export const LINES = {
     someTool: 'The tool', someAgent: 'agent', // a tool, a subagent with no name
     compact: ['Compressing our memories…', 'Too much memory. Tidying up.'],
     // talking to her (chat.js): a local model through Ollama; replies and voice are AI-generated, and she says so
+    // her wheel (wheel.js): middle-click on her, or holding her still
+    wheel: { talk: 'Talk', status: 'Status', report: 'Report', satellite: 'Satellite', capri: 'In character', assistant: 'Assistant', hide: 'Put away', teleport: 'Teleport', menu: 'Menu' },
     chat: {
       badge: 'AI · LIVE', badgeAssistant: 'AI · ASSIST', talk: 'Talk to me',
       hello: ['Hey, choom. What’s on your mind?', 'Line’s open. Talk to us.', 'You want to chat? We’re all ears. All of ours.'],
@@ -754,6 +758,8 @@ export const LINES = {
     someTool: 'La herramienta', someAgent: 'agente', // una herramienta, un subagente sin nombre
     compact: ['Comprimiendo nuestros recuerdos…', 'Demasiada memoria. Ordenando.'],
     // hablar con ella (chat.js): un modelo local con Ollama; respuestas generadas por IA, y lo dice
+    // her wheel (wheel.js): middle-click on her, or holding her still
+    wheel: { talk: 'Hablar', status: 'Estado', report: 'Informe', satellite: 'Satélite', capri: 'En su papel', assistant: 'Asistente', hide: 'Guardar', teleport: 'Teletransporte', menu: 'Menú' },
     chat: {
       badge: 'IA · EN VIVO', badgeAssistant: 'IA · ASIST', talk: 'Háblame',
       hello: ['Hola, choom. ¿Qué tienes en mente?', 'La línea está abierta. Háblanos.', '¿Quieres charlar? Somos todo oídos. Todos los nuestros.'],
@@ -1103,6 +1109,8 @@ export const LINES = {
     someTool: 'A ferramenta', someAgent: 'agente', // uma ferramenta, um subagente sem nome
     compact: ['Comprimindo nossas memórias…', 'Memória demais. Arrumando tudo.'],
     // falar com ela (chat.js): um modelo local pelo Ollama; respostas geradas por IA, e ela avisa
+    // her wheel (wheel.js): middle-click on her, or holding her still
+    wheel: { talk: 'Falar', status: 'Status', report: 'Relatório', satellite: 'Satélite', capri: 'No papel', assistant: 'Assistente', hide: 'Guardar', teleport: 'Teleporte', menu: 'Menu' },
     chat: {
       badge: 'IA · AO VIVO', badgeAssistant: 'IA · ASSIST', talk: 'Fala comigo',
       hello: ['E aí, choom. O que você tem em mente?', 'A linha está aberta. Fala com a gente.', 'Quer conversar? Somos todo ouvidos. Todos os nossos.'],
@@ -1452,6 +1460,8 @@ export const LINES = {
     someTool: 'Инструмент', someAgent: 'агент', // инструмент, субагент без имени
     compact: ['Сжимаю наши воспоминания…', 'Слишком много памяти. Навожу порядок.'],
     // поговорить с ней (chat.js): локальная модель через Ollama; ответы генерирует ИИ, и она это говорит
+    // её колесо (wheel.js): средняя кнопка мыши, или удерживать её на месте
+    wheel: { talk: 'Поговорить', status: 'Статус', report: 'Отчёт', satellite: 'Спутник', capri: 'В образе', assistant: 'Помощник', hide: 'Спрятать', teleport: 'Телепорт', menu: 'Меню' },
     chat: {
       badge: 'ИИ · ЭФИР', badgeAssistant: 'ИИ · ПОМОЩНИК', talk: 'Поговори со мной',
       hello: ['Привет, чумба. О чём думаешь?', 'Линия открыта. Говори с нами.', 'Хочешь поболтать? Мы все во внимании. Все до одной.'],

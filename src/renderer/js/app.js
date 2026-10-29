@@ -7,6 +7,7 @@ import { Brain } from './brain.js';
 import { Guide } from './guide.js';
 import { Mission } from './mission.js';
 import { Chat } from './chat.js';
+import { Wheel } from './wheel.js';
 import { Setup } from './setup.js';
 import { Custom } from './custom.js';
 import { Bond, Jealousy } from './bond.js';
@@ -112,7 +113,7 @@ async function boot() {
     const r = panel.rect();
     const onPanel = r && mouse.x >= r.left && mouse.x <= r.right && mouse.y >= r.top && mouse.y <= r.bottom;
     document.body.style.cursor = onChip() ? 'pointer' : '';
-    return setInteractive(Boolean(onPanel || capri.hit(mouse.x, mouse.y) || onChip()));
+    return setInteractive(Boolean(onPanel || capri.hit(mouse.x, mouse.y) || onChip() || wheel.hit(mouse.x, mouse.y)));
   };
   // Her biochip: her eyes on it follow the pointer over it, and she comes out when you click it
   // (only then, so the pointer passing through that corner doesn't call her back).
@@ -182,10 +183,14 @@ async function boot() {
     if (chip.visible && chip.contains(e.clientX, e.clientY, 0)) comeOut();
   });
 
+  // Her wheel (wheel.js): the things you do most, in a ring around her head
+  const wheel = new Wheel({ root: document.getElementById('wheel'), capri });
+
   // wiring
   capri.onMove = (head) => {
     // pointing at something: the panel goes on her other side, so it doesn't cover it
     panel.setAnchor({ ...head, lean: capri.pointing ? -capri.pointing.dir : 0 }, capri.view);
+    wheel.follow(head);
     // she may have moved out from under a still pointer: never leave a dead click zone behind
     refreshHit();
   };
@@ -216,6 +221,7 @@ async function boot() {
   panel.onChar = (kind) => voice.play('blip', { mood: kind });
   panel.onTalk = (talking) => talking && capri.perform('talk');
   capri.onMenu = () => host.openMenu();
+  panel.onCopy = (text) => host.copyText(text); // her answers, to the clipboard
 
   // Her guide (guide.js): her welcome on first launch, and "How does it work?" in her menu,
   // where she takes you to things and points at them.
@@ -256,6 +262,63 @@ async function boot() {
   pc.enabled = config.pcReact !== false;
   let wantsOut = config.visible !== false; // not put away in your settings (Ctrl+Alt+C, her menu)
   pc.wantsOut = () => wantsOut;
+
+  // Her wheel: middle-click on her, or holding her still. What's on it depends on what she's doing.
+  const showReport = async () => {
+    if (capri.stowed) {
+      host.setConfig({ visible: true });
+      await capri.unstow();
+    }
+    capri.wake();
+    if (brain.report()) capri.perform('curious', capri.towardCenter());
+  };
+  const lookAtSatellite = async () => {
+    if (capri.stowed) {
+      host.setConfig({ visible: true });
+      await capri.unstow();
+    }
+    capri.wake();
+    if (capri.stance === 'peek') await capri.unpeek();
+    if (!capri.gaze({ big: true })) setTimeout(() => capri.gaze({ big: true }), 1500);
+  };
+  let chatMode = config.chatMode === 'assistant' ? 'assistant' : 'capri';
+  capri.onWheel = () => {
+    if (wheel.visible || capri.stowed || capri.dormant) return;
+    const w = brain.t.wheel;
+    panel.hide();
+    const items = [
+      { id: 'talk', icon: '◆', label: w.talk, hot: true },
+      ...(brain.watching ? [{ id: 'status', icon: '◉', label: w.status }, { id: 'report', icon: '▤', label: w.report }] : []),
+      { id: 'satellite', icon: '✦', label: w.satellite },
+      { id: 'mode', icon: chatMode === 'assistant' ? '⟐' : '☍', label: chatMode === 'assistant' ? w.assistant : w.capri },
+      { id: 'teleport', icon: '⇝', label: w.teleport },
+      { id: 'hide', icon: '◌', label: w.hide },
+      { id: 'menu', icon: '≡', label: w.menu },
+    ];
+    capri.nextMove = Math.max(capri.nextMove, performance.now() + 30000); // no wandering off from under it
+    wheel.show(items, capri.head());
+    refreshHit();
+  };
+  wheel.onClose = () => refreshHit();
+  wheel.onPick = async (id) => {
+    switch (id) {
+      case 'talk': chat.start(); break;
+      case 'status': brain.status(); break;
+      case 'report': showReport(); break;
+      case 'satellite': lookAtSatellite(); break;
+      case 'mode': { // how she answers: the other way, and she says which
+        chatMode = chatMode === 'assistant' ? 'capri' : 'assistant';
+        host.setConfig({ chatMode });
+        const t = brain.t;
+        panel.say({ kind: 'info', face: chatMode === 'assistant' ? 'look' : 'smug', badge: chatMode === 'assistant' ? t.chat.badgeAssistant : t.chat.badge, line: chatMode === 'assistant' ? t.wheel.assistant : t.wheel.capri, hold: 2200 });
+        break;
+      }
+      case 'teleport': capri.teleport(capri.spot('random')); break;
+      case 'hide': host.setConfig({ visible: false }); capri.stow(); break;
+      case 'menu': host.openMenu(); break;
+      default: break;
+    }
+  };
 
   // Clicking her: what's going on, or she offers to talk. Sulking, she turns her back on you.
   capri.onClick = () => {
@@ -598,6 +661,7 @@ async function boot() {
     look.configure(cfg);
     pc.enabled = cfg.pcReact !== false;
     wantsOut = cfg.visible !== false;
+    chatMode = cfg.chatMode === 'assistant' ? 'assistant' : 'capri';
     reminders.sync(cfg.reminders); // one may have been cancelled from her menu
     capri.wander = cfg.wander;
     capri.possessWindows = cfg.possess;
@@ -699,13 +763,12 @@ async function boot() {
       case 'chat': // "Talk to her" in her menu
         chat.start();
         break;
+      case 'chatToggle': // Ctrl+Alt+Space: her chat, or close it
+        if (chat.open) panel.hide();
+        else chat.start();
+        break;
       case 'report': // "Mission report" in her menu
-        if (capri.stowed) {
-          host.setConfig({ visible: true });
-          await capri.unstow();
-        }
-        capri.wake();
-        if (brain.report()) capri.perform('curious', capri.towardCenter());
+        showReport();
         break;
       case 'fakeClaude': { // --dev: the topmost window (the test window) is where a prompt was typed, and you're elsewhere
         const win = capri.windows.wins[0];
@@ -725,13 +788,7 @@ async function boot() {
         else capri.unstow();
         break;
       case 'satellite': // the whole sequence, on demand (tray)
-        if (capri.stowed) {
-          host.setConfig({ visible: true });
-          await capri.unstow();
-        }
-        capri.wake();
-        if (capri.stance === 'peek') await capri.unpeek();
-        if (!capri.gaze({ big: true })) setTimeout(() => capri.gaze({ big: true }), 1500);
+        lookAtSatellite();
         break;
       case 'hooks':
         if (cmd.ok) panel.say({ kind: 'info', line: cmd.action === 'install' ? t.hooksOk : t.hooksRemoved, hold: 6000 });

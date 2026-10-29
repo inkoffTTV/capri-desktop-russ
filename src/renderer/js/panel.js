@@ -64,22 +64,39 @@ export class Panel {
     this.chatSend = panel.querySelector('.panel__send');
     this.chatClose = panel.querySelector('.panel__close');
     this.note = panel.querySelector('.panel__note');
+    this.thread = panel.querySelector('.panel__thread'); // the conversation so far, above her answer
+    this.copyButton = panel.querySelector('.panel__copy'); // her finished answer, to the clipboard
+    this.onCopy = null; // (text) => Promise<boolean>, the clipboard (app.js)
+    this.turnYou = null; // this turn: what you said, and her finished answer, for the thread
+    this.turnHer = null;
     this.chatForm.addEventListener('click', (e) => e.stopPropagation());
     this.chatForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const text = this.chatInput.value.trim();
       if (!text || this.chatInput.disabled) return;
       this.chatInput.value = '';
+      this.growInput();
       this.current?.onSend?.(text);
     });
+    // Enter sends, Shift+Enter makes a new line (a paragraph, a bit of code)
     this.chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.hide();
+      else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        this.chatForm.requestSubmit();
+      }
     });
+    this.chatInput.addEventListener('input', () => this.growInput());
     this.chatClose.addEventListener('click', () => this.hide());
+    this.copyButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.copy(this.line.textContent, this.copyButton);
+    });
 
     this.el.addEventListener('click', () => {
-      if (this.current?.chat) this.chatInput.focus(); // a chat stays until you close it
-      else this.hide();
+      if (!this.current?.chat) return this.hide();
+      // a chat stays until you close it; a click to select some of it keeps the selection
+      if (!String(getSelection()).length) this.chatInput.focus();
     });
     this.portrait.addEventListener('animationend', (e) => {
       if (e.animationName === 'face-swap') this.portrait.classList.remove('is-swapping');
@@ -141,6 +158,7 @@ export class Panel {
     this.el.classList.toggle('is-guide', Boolean(msg.guide));
     this.renderReport(msg.report);
     this.renderActions(msg.actions, msg.onAction);
+    this.copyButton.hidden = true;
     this.renderChat(msg.chat);
     this.summary.textContent = msg.summary || '';
     this.summary.hidden = !msg.summary;
@@ -281,8 +299,17 @@ export class Panel {
     this.chatForm.hidden = !chat;
     this.note.hidden = !chat?.note;
     if (!chat) return;
-    this.chatInput.maxLength = chat.assistant ? 4000 : 500;
-    this.chatInput.type = chat.secret ? 'password' : 'text';
+    this.chatInput.maxLength = chat.assistant ? 8000 : chat.secret ? 500 : 2000;
+    this.chatInput.classList.toggle('is-secret', Boolean(chat.secret)); // a key: hidden as you type
+    this.chatInput.value = '';
+    this.growInput();
+    this.copyLabels = { copy: chat.copy || '', copied: chat.copied || '' };
+    this.copyButton.title = this.copyLabels.copy;
+    this.copyButton.setAttribute('aria-label', this.copyLabels.copy);
+    this.copyButton.hidden = true;
+    this.turnYou = null;
+    this.turnHer = chat.history ? this.current?.line || null : null; // her hello joins the thread with your first message
+    this.renderThread(chat.history || []);
     this.chatInput.placeholder = chat.placeholder;
     this.chatInput.setAttribute('aria-label', chat.placeholder);
     this.chatInput.disabled = false;
@@ -304,6 +331,16 @@ export class Panel {
     clearInterval(this.decodeTimer);
     this.stopStream();
     this.setFace(face);
+    // the turn before this one goes up into the thread, and the thread shows it
+    if (this.turnYou !== null || this.turnHer !== null) {
+      this.addToThread([
+        ...(this.turnYou !== null ? [{ role: 'user', content: this.turnYou }] : []),
+        ...(this.turnHer ? [{ role: 'assistant', content: this.turnHer }] : []),
+      ]);
+    }
+    this.turnYou = quote;
+    this.turnHer = null;
+    this.copyButton.hidden = true;
     this.quote.textContent = quote;
     this.quote.hidden = !quote;
     this.line.textContent = '';
@@ -340,6 +377,8 @@ export class Panel {
       this.line.textContent = chars.join('');
       this.line.classList.remove('is-streaming');
       this.glitchLine();
+      this.turnHer = this.line.textContent;
+      this.copyButton.hidden = !this.turnHer; // her answer is whole: it can be copied
     } else {
       // noise where the next characters land; still waiting for more, a little static at the end
       let tail = '';
@@ -366,6 +405,75 @@ export class Panel {
     this.line.classList.remove('is-glitching');
     void this.line.offsetWidth; // restart the CSS animation
     this.line.classList.add('is-glitching');
+  }
+
+  // The line you type in grows with what you write, up to a few lines; the panel moves with it.
+  growInput() {
+    const el = this.chatInput;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 168)}px`;
+    this.place();
+  }
+
+  // The conversation so far (the memory of it, when the chat opens), above her answer.
+  renderThread(messages) {
+    this.thread.replaceChildren();
+    this.thread.hidden = true;
+    if (messages.length) this.addToThread(messages);
+  }
+
+  addToThread(messages) {
+    for (const { role, content } of messages) {
+      const li = document.createElement('li');
+      li.className = role === 'user' ? 'thread__turn is-you' : 'thread__turn is-her';
+      const text = document.createElement('span');
+      text.className = 'thread__text';
+      text.textContent = content;
+      li.append(text);
+      if (role !== 'user') {
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'thread__copy';
+        copy.textContent = '⧉';
+        copy.title = this.copyLabels?.copy || '';
+        copy.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.copy(content, copy);
+        });
+        li.append(copy);
+      }
+      this.thread.append(li);
+    }
+    while (this.thread.children.length > 40) this.thread.firstChild.remove();
+    this.thread.hidden = !this.thread.children.length;
+    this.thread.scrollTop = this.thread.scrollHeight;
+    this.place();
+  }
+
+  // Text to the clipboard, and the button says so for a moment.
+  async copy(text, button) {
+    if (!text) return;
+    let ok = false;
+    try {
+      ok = (await this.onCopy?.(text)) ?? false;
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } catch {
+        ok = false;
+      }
+    }
+    if (!button) return;
+    button.classList.toggle('is-done', ok);
+    button.textContent = ok ? '✓' : '✕';
+    setTimeout(() => {
+      button.textContent = '⧉';
+      button.classList.remove('is-done');
+    }, 1200);
   }
 
   // While she answers you can't send another.

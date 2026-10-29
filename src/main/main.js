@@ -327,7 +327,7 @@ function rebuildTray() {
     { label: t.demo, click: playDemo },
     { label: t.help, click: () => sendCommand('welcome') },
     ...(cfg.claude ? [{ label: t.report, click: () => sendCommand('report') }] : []),
-    { label: t.talk, click: () => sendCommand('chat') },
+    { label: t.talk, accelerator: 'Ctrl+Alt+Space', click: () => sendCommand('chat') },
     { label: t.lookNow, click: () => sendCommand('look') },
     {
       label: t.reminders,
@@ -791,6 +791,10 @@ function registerIpc() {
   ipcMain.handle('chat:memory', () => readMemory().history || []);
   ipcMain.on('chat:remember', (_e, history) => Array.isArray(history) && saveMemory({ history }));
   ipcMain.on('chat:ollama', () => shell.openExternal(OLLAMA_SITE));
+  ipcMain.handle('clipboard:text', (_e, text) => {
+    clipboard.writeText(String(text));
+    return true;
+  });
   // setting her up with buttons (setup.js): Ollama and a model, or a key, or an address
   const progress = (payload) => overlay?.webContents.send('setup:progress', payload);
   let pulling = null; // AbortController of the model being fetched
@@ -1058,6 +1062,7 @@ function main() {
       onDebug: DEV ? debugHandler : null,
     });
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
+    globalShortcut.register('Control+Alt+Space', () => sendCommand('chatToggle')); // her chat, open or closed
     llm.restoreClaude(readMemory().claude);
     refreshModels(); // for her menu's model list
     setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask

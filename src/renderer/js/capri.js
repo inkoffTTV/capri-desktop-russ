@@ -107,6 +107,7 @@ export class Capri {
     this.onTeleport = null; // ('start' | 'end')
     this.onClick = null;
     this.onMenu = null;   // right-click on her
+    this.onWheel = null;  // middle-click on her, or holding her without moving: her wheel (wheel.js)
     this.onGaze = null;
     this.onMode = null;   // (mode, previous)
     this.onStow = null;   // she's in her biochip
@@ -1728,7 +1729,17 @@ export class Capri {
       e.preventDefault();
       if (this.hit(e.clientX, e.clientY)) this.onMenu?.(); // right-click: her menu
     });
+    let hold = 0; // holding her still: her wheel
+    const endHold = () => {
+      clearTimeout(hold);
+      hold = 0;
+    };
     this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 1 && this.hit(e.clientX, e.clientY)) {
+        e.preventDefault(); // no autoscroll cursor
+        if (!this.busy) this.onWheel?.();
+        return;
+      }
       if (e.button !== 0 || !this.hit(e.clientX, e.clientY)) return;
       // thrown: you can catch her on the fly, or pick her up off the floor
       const thrown = this.stance === 'fly' || this.stance === 'down';
@@ -1740,6 +1751,16 @@ export class Capri {
       down = { x: e.clientX, y: e.clientY, pos: { ...this.pos }, at: this.spritePoint(e.clientX, e.clientY) };
       this.track = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
       if (thrown) this.pickUp(down);
+      // held still for a moment (not dragged, not let go): her wheel, and the click doesn't count
+      else {
+        endHold();
+        hold = setTimeout(() => {
+          hold = 0;
+          if (!down || this.dragging || this.busy) return;
+          down = null;
+          this.onWheel?.();
+        }, 480);
+      }
     });
     window.addEventListener('mousemove', (e) => {
       this.mouse = { x: e.clientX, y: e.clientY }; // a window she's in watches it
@@ -1748,6 +1769,7 @@ export class Capri {
         this.track.push({ x: e.clientX, y: e.clientY, t: now });
         while (this.track.length > 2 && now - this.track[0].t > 160) this.track.shift();
         const dx = e.clientX - down.x, dy = e.clientY - down.y;
+        if (Math.hypot(dx, dy) > 5) endHold();
         if (!this.dragging && Math.hypot(dx, dy) > 5 && !this.busy) this.pickUp(down);
         if (this.dragging) {
           this.pos = {
@@ -1762,6 +1784,7 @@ export class Capri {
       this.notice(e.clientX, e.clientY);
     });
     window.addEventListener('mouseup', () => {
+      endHold();
       if (!down) return;
       const wasDragging = this.dragging;
       down = null;
