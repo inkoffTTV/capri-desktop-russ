@@ -150,6 +150,7 @@ body {
 .panel[data-kind='alert'] { --accent: var(--red); }
 .panel[data-kind='error'] { --accent: var(--red); }
 .panel[data-kind='idle'] { --accent: var(--paper-3); }
+.panel[data-kind='remind'] { --accent: var(--blue); }
 
 .panel__frame {
   position: relative;

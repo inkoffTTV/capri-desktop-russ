@@ -147,22 +147,25 @@ export class Setup {
     return res.ok ? true : this.fail(t.wakeFailed, t.wakeFailedHow);
   }
 
-  // Which model to fetch: the better one first when the PC has room for it.
+  // Which model to fetch: the better one first when the PC has room for it, then Ollama's free cloud
+  // ones if you're signed in to it.
   async pickModel(line = this.t.model) {
     const t = this.t;
     const info = await this.host.setupInfo();
     const fits = info.models.filter((m) => !m.min || info.ram >= m.min); // the bigger ones only with the memory for them
     const models = info.ram >= ROOMY ? fits : [...fits].reverse();
+    const cloud = info.cloud || [];
     const id = await this.guide.ask({
       face: 'look',
       line,
-      quote: t.modelHow,
+      quote: cloud.length ? `${t.modelHow}\n${t.cloudHow}` : t.modelHow,
       actions: [
         ...models.map((m, i) => ({ id: m.name, label: `${m.name} · ${this.size(m.bytes)}`, primary: i === 0 })),
+        ...cloud.map((name) => ({ id: name, label: `${name.replace(/:cloud$/, '')} · ${t.cloudFree}` })),
         { id: 'later', label: t.later },
       ],
     });
-    return models.some((m) => m.name === id) ? id : null;
+    return models.some((m) => m.name === id) || cloud.includes(id) ? id : null;
   }
 
   // Fetching it: a bar that fills, how much is done, and a button to stop.

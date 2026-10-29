@@ -6,17 +6,20 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, Tray, Menu, ipcMain, screen, protocol, net, shell, globalShortcut, nativeImage,
-  clipboard, ClipboardItem, dialog, powerMonitor,
+  clipboard, ClipboardItem, dialog, powerMonitor, desktopCapturer,
 } = require('electron');
+const { randomUUID } = require('node:crypto');
 
 const config = require('./config');
 const { TRAY, LANGS } = require('./labels');
 const { createBridge } = require('./bridge');
 const { startWindowWatch } = require('./windows');
 const llm = require('./llm');
+const ollama = require('./ollama');
 const setup = require('./setup');
 const apps = require('./apps');
 const launch = require('./launch');
+const files = require('./files');
 const { ASSISTANTS, assistant } = require('./assistants');
 const activeAssistant = () => assistant(config.load().assistant); // Claude Code or Codex
 const activeHooks = () => activeAssistant().hooks;
@@ -43,6 +46,8 @@ let lastWindows = null;
 let chatModels = null; // the provider's models, as last seen (null: not reached)
 let chatError = null;  // why not, when the provider said
 let chatErrorCode = null; // 'nokey' or 'nourl': what her setup should ask for
+// Ollama's cloud, as last seen: your account ({ name } or { signin }) and the models free with it
+let cloud = { at: 0, account: null, free: [] };
 const chats = new Map(); // id -> AbortController of an answer being streamed
 
 const userSoundsDir = () => path.join(app.getPath('userData'), 'sounds');
@@ -83,9 +88,42 @@ function serveProtocol() {
   });
 }
 
+// Your screens. In --dev with CAPRI_SCREENS=2 and only one screen, it's cut in two halves side by
+// side, to try her going from one to the other without a second monitor.
+function displays() {
+  const real = screen.getAllDisplays();
+  if (!DEV || process.env.CAPRI_SCREENS !== '2' || real.length > 1) return real;
+  const d = screen.getPrimaryDisplay();
+  const half = (r, i) => ({ x: r.x + Math.floor(r.width / 2) * i, y: r.y, width: Math.floor(r.width / 2), height: r.height });
+  return [0, 1].map((i) => ({ ...d, id: d.id * 10 + i + 1, bounds: half(d.bounds, i), workArea: half(d.workArea, i), size: { width: Math.floor(d.size.width / 2), height: d.size.height } }));
+}
+
+// The screen a point (DIP) is on, else the nearest one.
+function displayAt(p) {
+  const all = displays();
+  const inside = all.find(({ bounds: b }) => p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height);
+  if (inside) return inside;
+  const near = screen.getDisplayNearestPoint(p);
+  return all.find((d) => d.id === near.id) || all[0];
+}
+
 function targetDisplay() {
   const { displayId } = config.load();
-  return screen.getAllDisplays().find((d) => d.id === displayId) || screen.getPrimaryDisplay();
+  const all = displays();
+  return all.find((d) => d.id === displayId) || all.find((d) => d.id === screen.getPrimaryDisplay().id) || all[0];
+}
+
+// Her window over to another screen (she's on her way there, screens.js). Set twice: going to a
+// screen with another scale, Windows resizes the window once it lands there.
+function moveOverlay(id) {
+  if (!displays().some((d) => d.id === id)) return null;
+  config.save({ displayId: id });
+  fitOverlay();
+  const { area } = overlayArea();
+  overlay.setBounds(area);
+  windowWatch?.refresh();
+  rebuildTray();
+  return area;
 }
 
 // Her window: the work area, or the whole screen while she rests on the taskbar (her legs hang
@@ -116,6 +154,18 @@ function rearmOverlay() {
   fitOverlay();
   sendCommand('rearmed'); // click-through again: she waits for the pointer to be on her
   console.log('[capri] mouse hook set up again');
+}
+
+// Back on top of everything, the taskbar included (it comes up over her when it's clicked). Twice:
+// the taskbar can come up again a moment later, as its menus and previews open.
+function raiseOverlay() {
+  for (const wait of [0, 400]) {
+    setTimeout(() => {
+      if (!overlay || overlay.isDestroyed()) return;
+      overlay.setAlwaysOnTop(true, 'screen-saver');
+      overlay.moveTop();
+    }, wait);
+  }
 }
 
 function createOverlay() {
@@ -236,7 +286,10 @@ function rendererConfig() {
 
 function updateConfig(patch) {
   config.save(patch);
-  if ('rest' in patch) fitOverlay(); // the taskbar in her window or not
+  if ('rest' in patch) {
+    fitOverlay(); // the taskbar in her window or not
+    windowWatch?.refresh();
+  }
   const cfg = rendererConfig();
   overlay?.webContents.send('capri:config', cfg);
   rebuildTray();
@@ -251,11 +304,23 @@ function rebuildTray() {
   const t = Object.fromEntries(Object.entries(TRAY[resolveLang(cfg.lang)]).map(([key, value]) =>
     [key, typeof value === 'string' && watched.id !== 'claude' ? value.replaceAll('Claude Code', watched.name) : value]));
 
-  const displays = screen.getAllDisplays();
+  const screens = displays();
   const current = targetDisplay().id;
+  // how close she is to you (bond.js): STAGES there, 1000 xp is 100 %
+  const xp = cfg.bond?.xp || 0;
+  const stage = [0, 100, 300, 550, 850].filter((at) => xp >= at).length - 1;
+  // the reminders she keeps (reminders.js), soonest first
+  const reminders = [...(cfg.reminders || [])].sort((a, b) => a.at - b.at);
+  const when = (at) => {
+    const d = new Date(at);
+    const sameDay = d.toDateString() === new Date().toDateString();
+    return new Intl.DateTimeFormat(resolveLang(cfg.lang), sameDay ? { hour: '2-digit', minute: '2-digit' } : { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(d);
+  };
+  const cancelReminder = (id) => updateConfig({ reminders: (config.load().reminders || []).filter((r) => r.id !== id) });
 
   const menu = Menu.buildFromTemplate([
     { label: t.online(PORT), enabled: false },
+    { label: t.sync(Math.min(100, Math.floor(xp / 10)), t.stages[stage]), enabled: false },
     { type: 'separator' },
     { label: t.teleport, click: () => sendCommand('teleport') },
     { label: t.satellite, click: () => sendCommand('satellite') },
@@ -263,6 +328,16 @@ function rebuildTray() {
     { label: t.help, click: () => sendCommand('welcome') },
     ...(cfg.claude ? [{ label: t.report, click: () => sendCommand('report') }] : []),
     { label: t.talk, click: () => sendCommand('chat') },
+    { label: t.lookNow, click: () => sendCommand('look') },
+    {
+      label: t.reminders,
+      submenu: reminders.length
+        ? reminders.map((r) => ({
+          label: `${when(r.at)} · ${(r.text || '…').slice(0, 50)}`,
+          submenu: [{ label: t.cancelReminder, click: () => cancelReminder(r.id) }],
+        }))
+        : [{ label: t.noReminders, enabled: false }],
+    },
     { label: t.custom, click: () => sendCommand('customize') },
     { label: cfg.visible ? t.hide : t.show, accelerator: 'Ctrl+Alt+C', click: () => toggleVisible() },
     { type: 'separator' },
@@ -288,13 +363,17 @@ function rebuildTray() {
     },
     {
       label: t.screen,
-      enabled: displays.length > 1,
-      submenu: displays.map((d, i) => ({
-        label: `${i + 1} — ${d.size.width}×${d.size.height}`,
-        type: 'radio',
-        checked: d.id === current,
-        click: () => { config.save({ displayId: d.id }); fitOverlay(); rebuildTray(); },
-      })),
+      enabled: screens.length > 1,
+      submenu: [
+        ...screens.map((d, i) => ({
+          label: `${i + 1} — ${d.size.width}×${d.size.height}`,
+          type: 'radio',
+          checked: d.id === current,
+          click: () => d.id !== current && sendCommand('goScreen', { id: d.id }), // she goes over there herself
+        })),
+        { type: 'separator' },
+        { label: t.follow, type: 'checkbox', checked: cfg.follow !== false, click: (item) => updateConfig({ follow: item.checked }) },
+      ],
     },
     {
       label: t.chatModel,
@@ -313,9 +392,17 @@ function rebuildTray() {
         { type: 'separator' },
         ...(chatModels?.length
           ? chatModels.map((name) => ({
-            label: name, type: 'radio', checked: name === pickModel(cfg), click: () => updateConfig({ chatModel: name }),
+            label: cloud.free.includes(name) ? `${name} · ${t.cloudFree}` : name,
+            type: 'radio', checked: name === pickModel(cfg), click: () => updateConfig({ chatModel: name }),
           }))
           : [{ label: (chatError || t.noOllama).slice(0, 80), enabled: false }]),
+        // Ollama's free cloud models when you're signed in to it, fetched on the click (it takes a second)
+        ...(cfg.provider === 'ollama' && chatModels ? [
+          ...cloud.free.filter((name) => !chatModels.includes(name)).map((name) => ({
+            label: `${name} · ${t.cloudFree}`, type: 'radio', checked: false, click: () => fetchModel(name).catch(() => rebuildTray()),
+          })),
+          ...(cloud.account?.signin ? [{ label: t.cloudSignin, click: signInToOllama }] : []),
+        ] : []),
         { type: 'separator' },
         ...(cfg.provider === 'claude' ? [
           { label: `Claude Code: ${cfg.claudeCwd || app.getPath('home')}`, click: pickClaudeFolder },
@@ -333,6 +420,16 @@ function rebuildTray() {
     },
     { label: t.wander, type: 'checkbox', checked: cfg.wander, click: (item) => updateConfig({ wander: item.checked }) },
     { label: t.possess, type: 'checkbox', checked: cfg.possess, click: (item) => updateConfig({ possess: item.checked }) },
+    { label: t.jealous, type: 'checkbox', checked: cfg.jealous !== false, click: (item) => updateConfig({ jealous: item.checked }) },
+    { label: t.pcReact, type: 'checkbox', checked: cfg.pcReact !== false, click: (item) => updateConfig({ pcReact: item.checked }) },
+    {
+      // she asks first (what she'll send where), then turns it on herself
+      label: t.lookAuto, type: 'checkbox', checked: Boolean(cfg.watchScreen),
+      click: (item) => {
+        sendCommand('watchScreen', { on: item.checked });
+        rebuildTray(); // as it is until she's asked
+      },
+    },
     {
       label: t.rest,
       submenu: [['corner', t.restCorner], ['taskbar', t.restTaskbar]].map(([rest, label]) => ({
@@ -360,6 +457,19 @@ function rebuildTray() {
       label: t.motion,
       submenu: [['auto', t.motionAuto], ['full', t.motionFull], ['reduced', t.motionReduced]].map(([motion, label]) => ({
         label, type: 'radio', checked: cfg.motion === motion, click: () => updateConfig({ motion, motionAsked: true }),
+      })),
+    },
+    {
+      label: t.display,
+      // only read when she starts: she restarts in the mode picked
+      submenu: [['auto', t.displayAuto], ['gl', t.displayGl], ['software', t.displaySoftware]].map(([render, label]) => ({
+        label, type: 'radio', checked: cfg.render === render,
+        click: () => {
+          if (cfg.render === render) return;
+          config.save({ render });
+          app.relaunch();
+          app.exit(0);
+        },
       })),
     },
     {
@@ -409,10 +519,12 @@ function runHooks(action, { quiet = false } = {}) {
   return outcome;
 }
 
-// The model she talks with: the one picked in her menu if it's still installed, else the first.
+// The model she talks with: the one picked in her menu if it's still installed, else the first one
+// on this PC (a cloud model only once you pick it).
 function pickModel(cfg = config.load()) {
   if (!chatModels?.length) return null;
-  return chatModels.includes(cfg.chatModel) ? cfg.chatModel : chatModels[0];
+  if (chatModels.includes(cfg.chatModel)) return cfg.chatModel;
+  return chatModels.find((m) => !ollama.isCloud(m)) || chatModels[0];
 }
 
 async function refreshModels() {
@@ -425,7 +537,119 @@ async function refreshModels() {
     return null;
   });
   rebuildTray();
+  if (cfg.provider === 'ollama' && chatModels) refreshCloud(); // in the background: it asks ollama.com
   return chatModels;
+}
+
+// Whether you're signed in to Ollama, and its free cloud models if so. Once a minute at most.
+let cloudCheck = null; // the look under way
+function refreshCloud(force = false) {
+  if (!force && Date.now() - cloud.at < 60000) return cloudCheck || Promise.resolve(cloud);
+  const at = Date.now();
+  cloud.at = at;
+  cloudCheck = (async () => {
+    const account = await ollama.account();
+    const free = account?.name ? await ollama.freeModels() : [];
+    cloud = { at, account, free };
+    rebuildTray();
+    return cloud;
+  })().finally(() => { cloudCheck = null; });
+  return cloudCheck;
+}
+
+// A model fetched with Ollama (a cloud one is only a small file), then her chat on it.
+async function fetchModel(name, onProgress, signal) {
+  await setup.pullModel(name, onProgress, signal);
+  updateConfig({ provider: 'ollama' });
+  await refreshModels();
+  const model = chatModels?.find((m) => m === name || m.startsWith(`${name}:`));
+  if (model) updateConfig({ chatModel: model });
+  return model;
+}
+
+// The page that links this PC to your Ollama account, then a look every few seconds until you're in.
+async function signInToOllama() {
+  if (!cloud.account?.signin) return;
+  shell.openExternal(cloud.account.signin);
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    if ((await refreshCloud(true)).account?.name) return;
+  }
+}
+
+// Her answer from the model picked, or from the next one when that one can't: too busy twice in a row
+// (Gemini's "high demand", an Ollama cloud model out of free use), not served anymore (an older model
+// closed to new keys), or signed out of Ollama. A model on this PC first. The model that answered is
+// kept for next time.
+async function chatWithFallback(cfg, messages, mode, send, signal, streamed) {
+  let model = pickModel(cfg);
+  const tried = new Set();
+  let busy = 0;
+  for (;;) {
+    try {
+      const text = await llm.chat(cfg.provider, llmConfig(cfg), { model, messages, mode }, send, signal);
+      if (model !== pickModel(cfg)) updateConfig({ chatModel: model });
+      return text;
+    } catch (err) {
+      if (signal.aborted || streamed() || !['busy', 'gone', 'signin'].includes(err.code)) throw err;
+      if (err.code === 'busy' && busy++ === 0) {
+        await new Promise((r) => setTimeout(r, 1500)); // usually gone a moment later
+        continue;
+      }
+      tried.add(model);
+      const next = chatModels?.find((m) => !tried.has(m) && !ollama.isCloud(m)) || chatModels?.find((m) => !tried.has(m));
+      if (!next || tried.size >= 3) throw err;
+      model = next;
+      busy = 0;
+    }
+  }
+}
+
+// She looks at your screen (look.js): a picture of the screen she's on, kept here in memory a moment
+// for her AI to look at, never written anywhere. 1280 px wide at most: enough to read, light to send.
+const snaps = new Map(); // id -> the picture, base64 JPEG
+async function snapScreen() {
+  const d = targetDisplay();
+  const k = d.scaleFactor || 1;
+  const fit = Math.min(1, 1280 / (d.bounds.width * k));
+  const size = { width: Math.round(d.bounds.width * k * fit), height: Math.round(d.bounds.height * k * fit) };
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
+  const src = sources.find((s) => s.display_id === String(d.id)) || sources[0];
+  if (!src || src.thumbnail.isEmpty()) throw new Error('no picture of the screen');
+  return src.thumbnail.toJPEG(72).toString('base64');
+}
+
+// What her AI says about that picture, as her (`persona`), asked `prompt`. With a code when it can't:
+// 'noai' (nothing to ask), 'novision' (that model can't look at pictures).
+async function sayAboutSnap({ id, persona, prompt, history = [] }) {
+  const image = snaps.get(id);
+  snaps.delete(id);
+  if (!image) return { ok: false, error: 'the picture is gone' };
+  const cfg = config.load();
+  if (!chatModels?.length) await refreshModels();
+  const model = pickModel(cfg);
+  if (!model) return { ok: false, code: 'noai' };
+  if (cfg.provider === 'claude') return { ok: false, code: 'novision', model: 'Claude Code' };
+  if (cfg.provider === 'ollama' && !(await ollama.canSee(model))) return { ok: false, code: 'novision', model };
+  const user = cfg.provider === 'ollama'
+    ? { role: 'user', content: prompt, images: [image] }
+    : { role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } }] };
+  // asked in her chat: the conversation so far comes before it (text only)
+  const before = (Array.isArray(history) ? history : []).filter((m) => typeof m?.content === 'string' && ['user', 'assistant'].includes(m.role));
+  const messages = [{ role: 'system', content: persona }, ...before, user];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const text = await llm.chat(cfg.provider, llmConfig(cfg), { model, messages }, () => {}, AbortSignal.timeout(120000));
+      return { ok: true, text, model };
+    } catch (err) {
+      if (err.code === 'busy' && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      const novision = /image|vision|multimodal|modalit|image_url|content.*(part|type)/i.test(err.message);
+      return { ok: false, error: err.message, code: novision ? 'novision' : err.code || null, model };
+    }
+  }
 }
 
 async function pickProvider(provider) {
@@ -464,7 +688,25 @@ function registerIpc() {
   ipcMain.handle('overlay:cursor', () => {
     const p = screen.getCursorScreenPoint();
     const b = overlay.getBounds();
-    return { x: p.x - b.x, y: p.y - b.y, inside: p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height };
+    const inside = p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height;
+    return { x: p.x - b.x, y: p.y - b.y, inside, display: displayAt(p).id };
+  });
+  // your screens (their bounds), the one she's on, and where her window is
+  ipcMain.handle('screens:list', () => {
+    const o = overlay.getBounds();
+    return {
+      current: targetDisplay().id,
+      origin: { x: o.x, y: o.y },
+      list: displays().map(({ id, bounds: b }) => ({ id, x: b.x, y: b.y, w: b.width, h: b.height })),
+    };
+  });
+  ipcMain.handle('screens:move', async (_e, id) => {
+    const area = moveOverlay(id);
+    if (!area) return null;
+    await new Promise((r) => setTimeout(r, 60));
+    overlay.setBounds(area); // again, once Windows has settled it on its new screen
+    const o = overlay.getBounds();
+    return { origin: { x: o.x, y: o.y }, width: o.width, height: o.height, gap: overlayArea().gap };
   });
   ipcMain.handle('config:get', () => rendererConfig());
   ipcMain.handle('hooks:status', () => activeHooks().status());
@@ -487,33 +729,76 @@ function registerIpc() {
     const models = await refreshModels();
     if (!models) return { ok: false, error: chatError || 'offline', code: chatErrorCode, provider };
     if (!models.length) return { ok: false, error: 'nomodel', provider };
-    llm.warm(provider, pickModel()); // loading while you type your first message
-    return { ok: true, provider, model: pickModel(), agent: provider === 'claude', local: llm.isLocal(provider, cfg), warmup: provider === 'ollama', mode: cfg.chatMode === 'assistant' ? 'assistant' : 'capri' };
+    const model = pickModel();
+    llm.warm(provider, model); // loading while you type your first message
+    const local = llm.isLocal(provider, cfg, model);
+    return { ok: true, provider, model, agent: provider === 'claude', local, warmup: provider === 'ollama' && local, mode: cfg.chatMode === 'assistant' ? 'assistant' : 'capri' };
   });
   // her answer, streamed to the overlay piece by piece as `chat:delta`
   ipcMain.handle('chat:send', async (_e, { id, messages, mode }) => {
     const abort = new AbortController();
     chats.set(id, abort);
     try {
-      const send = (text) => overlay?.webContents.send('chat:delta', { id, text });
+      let streamed = false;
+      const send = (text) => {
+        streamed = true;
+        overlay?.webContents.send('chat:delta', { id, text });
+      };
       const cfg = config.load();
-      const text = await llm.chat(cfg.provider, llmConfig(cfg), { model: pickModel(), messages, mode: mode || cfg.chatMode }, send, abort.signal);
+      const text = await chatWithFallback(cfg, messages, mode || cfg.chatMode, send, abort.signal, () => streamed);
       if (cfg.provider === 'claude') saveMemory({ claude: llm.claudeMemory() });
       return { ok: true, text };
     } catch (err) {
-      return { ok: false, error: abort.signal.aborted ? 'stopped' : err.message };
+      return { ok: false, error: abort.signal.aborted ? 'stopped' : err.message, code: err.code || null };
     } finally {
       chats.delete(id);
     }
   });
   ipcMain.on('chat:stop', (_e, id) => chats.get(id)?.abort());
+  // she looks at your screen (look.js): the picture first, then what her AI says about it
+  ipcMain.handle('look:snap', async () => {
+    try {
+      const id = randomUUID();
+      snaps.set(id, await snapScreen());
+      setTimeout(() => snaps.delete(id), 120000);
+      return { ok: true, id };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+  ipcMain.handle('look:say', (_e, request) => sayAboutSnap(request || {}));
+  // how hard the processor works, in %, since the last time she asked (pc.js)
+  let cpuBefore = null;
+  ipcMain.handle('pc:cpu', () => {
+    const now = os.cpus().map(({ times: t }) => ({ idle: t.idle, total: t.user + t.nice + t.sys + t.idle + t.irq }));
+    const before = cpuBefore;
+    cpuBefore = now;
+    if (!before) return null;
+    let idle = 0, total = 0;
+    now.forEach((c, i) => {
+      idle += c.idle - (before[i]?.idle || 0);
+      total += c.total - (before[i]?.total || 0);
+    });
+    return total > 0 ? Math.round(100 * (1 - idle / total)) : null;
+  });
+  // where her AI runs, for what she tells you before she looks: { local, provider, model }
+  ipcMain.handle('look:where', () => {
+    const cfg = config.load();
+    const model = pickModel(cfg);
+    const provider = cfg.provider === 'ollama' && ollama.isCloud(model) ? 'Ollama' : llm.PROVIDERS[cfg.provider]?.label || cfg.provider;
+    return { local: llm.isLocal(cfg.provider, cfg, model), provider, model };
+  });
   ipcMain.handle('chat:memory', () => readMemory().history || []);
   ipcMain.on('chat:remember', (_e, history) => Array.isArray(history) && saveMemory({ history }));
   ipcMain.on('chat:ollama', () => shell.openExternal(OLLAMA_SITE));
   // setting her up with buttons (setup.js): Ollama and a model, or a key, or an address
   const progress = (payload) => overlay?.webContents.send('setup:progress', payload);
   let pulling = null; // AbortController of the model being fetched
-  ipcMain.handle('setup:info', () => ({ models: setup.MODELS, ram: os.totalmem(), keyed: Object.keys(setup.KEY_PAGES) }));
+  ipcMain.handle('setup:info', async () => {
+    // the free cloud models too, when Ollama is up and you're signed in to it
+    const { free } = (await ollama.models().catch(() => null)) ? await refreshCloud() : { free: [] };
+    return { models: setup.MODELS, cloud: free, ram: os.totalmem(), keyed: Object.keys(setup.KEY_PAGES) };
+  });
   ipcMain.handle('setup:ollama', () => setup.ollamaState());
   ipcMain.handle('setup:install', () => setup.installOllama((line) => progress({ kind: 'install', line })));
   ipcMain.handle('setup:start', async () => {
@@ -522,16 +807,12 @@ function registerIpc() {
     return res;
   });
   ipcMain.handle('setup:pull', async (_e, name) => {
-    if (!setup.MODELS.some((m) => m.name === name)) return { ok: false, error: 'unknown model' };
+    if (!setup.MODELS.some((m) => m.name === name) && !cloud.free.includes(name)) return { ok: false, error: 'unknown model' };
     pulling?.abort();
     const abort = new AbortController();
     pulling = abort;
     try {
-      await setup.pullModel(name, (p) => progress({ kind: 'pull', ...p }), abort.signal);
-      updateConfig({ provider: 'ollama' });
-      await refreshModels();
-      const model = chatModels?.find((m) => m === name || m.startsWith(`${name}:`));
-      if (model) updateConfig({ chatModel: model });
+      const model = await fetchModel(name, (p) => progress({ kind: 'pull', ...p }), abort.signal);
       return { ok: true, model };
     } catch (err) {
       return { ok: false, error: abort.signal.aborted ? 'stopped' : err.message };
@@ -563,7 +844,21 @@ function registerIpc() {
   ipcMain.handle('apps:find', async (_e, wanted) => appInfo(await apps.find(wanted).catch(() => null)));
   ipcMain.handle('apps:close', (_e, { name, force }) => apps.close(name, { force }).catch((err) => ({ error: err.message })));
   // opening things you ask her to (launch.js): an app or a game, your music, a website
-  ipcMain.handle('apps:findLaunch', (_e, text) => launch.find(String(text || '')).catch(() => null));
+  ipcMain.handle('apps:findLaunch', async (_e, text) => {
+    const item = await launch.find(String(text || '')).catch(() => null);
+    return item && { ...item, risky: launch.risky(item) }; // a program or a script: behind a button
+  });
+  ipcMain.handle('apps:youtube', (_e, query) => launch.youtube(query).catch(() => null));
+  ipcMain.handle('apps:roblox', (_e, query) => launch.roblox(query).catch(() => null));
+  // your files (files.js): a search, opening what it found, a screenshot, a search on the web
+  ipcMain.handle('files:search', (_e, query) => files.search(query).catch(() => []));
+  ipcMain.handle('files:open', (_e, { file, reveal }) => files.open(String(file), { reveal: Boolean(reveal) }).then(() => true, () => false));
+  ipcMain.handle('files:screenshot', () => files.screenshot(targetDisplay()).catch(() => null));
+  ipcMain.handle('web:search', (_e, query) => {
+    const q = String(query || '').trim().slice(0, 300);
+    if (!q) return false;
+    return shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(q)}`).then(() => true, () => false);
+  });
   ipcMain.handle('apps:launch', (_e, item) => launch.launch(item).then(() => ({ ok: true }), (err) => ({ ok: false, error: err.message })));
   ipcMain.handle('apps:media', (_e, action) => launch.media(action));
   ipcMain.handle('apps:music', (_e, query) => launch.music(query).catch(() => false));
@@ -670,6 +965,32 @@ async function debugHandler(route, body) {
     }
     return { ok: true };
   }
+  if (route === 'menu') {
+    // her menu as labels, and a click on one of them if asked ({ click: 'beam:cloud · ...' })
+    const items = (menu) => menu.items.filter((i) => i.label).map((i) => (i.submenu ? { [i.label]: items(i.submenu) } : i.label));
+    const find = (menu) => menu.items.reduce((hit, i) => hit || (i.label === body.click ? i : i.submenu && find(i.submenu)), null);
+    if (body.click) find(trayMenu)?.click();
+    return { ok: true, value: items(trayMenu) };
+  }
+  if (route === 'eval') {
+    // a look inside the overlay (app.js puts what's there on window.dev in --dev)
+    return { ok: true, value: await overlay.webContents.executeJavaScript(String(body.js || 'null')) };
+  }
+  if (route === 'drag') {
+    // a drag over the overlay with a stand-in pointer, the real one untouched: the button goes down
+    // at the first point, follows the others (each `ms` after the one before), and comes up at the last
+    const points = Array.isArray(body.points) ? body.points : [];
+    if (!points.length) throw new Error('drag needs points');
+    const at = (p) => ({ x: Math.round(p.x), y: Math.round(p.y) });
+    overlay.webContents.sendInputEvent({ type: 'mouseMove', ...at(points[0]) });
+    overlay.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...at(points[0]) });
+    for (const p of points.slice(1)) {
+      await new Promise((r) => setTimeout(r, p.ms ?? 16));
+      overlay.webContents.sendInputEvent({ type: 'mouseMove', modifiers: ['leftButtonDown'], ...at(p) });
+    }
+    if (body.up !== false) overlay.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...at(points.at(-1)) });
+    return { ok: true };
+  }
   if (route === 'type') {
     // typing into the overlay (her chat), and Enter if asked
     if (body.text) await overlay.webContents.insertText(body.text);
@@ -692,7 +1013,22 @@ async function debugHandler(route, body) {
   throw new Error('unknown debug route');
 }
 
+// How her window is drawn, set before Electron starts (her menu › Display). On some PCs her see-through
+// window shows up black (NVIDIA with FXAA, MFAA or HDR on, for one): drawing it through OpenGL, or
+// without the graphics card, often fixes it.
+function applyRender() {
+  const { render } = config.load();
+  if (render === 'gl') app.commandLine.appendSwitch('use-angle', 'gl');
+  if (render === 'software') {
+    app.disableHardwareAcceleration();
+    app.commandLine.appendSwitch('enable-unsafe-swiftshader'); // her drawing still needs WebGL, done on the CPU
+  }
+  // --dev: what Chromium ended up drawing with
+  if (DEV) app.whenReady().then(() => setTimeout(() => console.log('[capri] display:', render, JSON.stringify(app.getGPUFeatureStatus())), 4000));
+}
+
 function main() {
+  applyRender();
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
@@ -709,6 +1045,8 @@ function main() {
     windowWatch = startWindowWatch({
       overlay,
       onUpdate: (data) => {
+        // a click on the taskbar brings it up over her: sitting on it, her legs would vanish behind it
+        if (data.taskbar && !lastWindows?.taskbar && config.load().rest === 'taskbar') raiseOverlay();
         lastWindows = data;
         overlay?.webContents.send('windows:update', data);
       },
@@ -723,9 +1061,16 @@ function main() {
     llm.restoreClaude(readMemory().claude);
     refreshModels(); // for her menu's model list
     setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask
-    screen.on('display-metrics-changed', fitOverlay);
-    screen.on('display-added', () => { fitOverlay(); rebuildTray(); });
-    screen.on('display-removed', () => { fitOverlay(); rebuildTray(); });
+    // a screen plugged in, unplugged, or rearranged: her window fitted again, and she learns of it
+    const screensChanged = () => {
+      fitOverlay();
+      windowWatch?.refresh();
+      rebuildTray();
+      sendCommand('screens');
+    };
+    screen.on('display-metrics-changed', screensChanged);
+    screen.on('display-added', screensChanged);
+    screen.on('display-removed', screensChanged);
     // after sleep or a locked screen, once Windows has settled
     powerMonitor.on('resume', () => setTimeout(rearmOverlay, 2000));
     powerMonitor.on('unlock-screen', () => setTimeout(rearmOverlay, 1000));

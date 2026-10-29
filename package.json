@@ -1,6 +1,6 @@
 {
   "name": "capri-desktop-russ",
-  "version": "0.4.0",
+  "version": "0.4.4",
   "description": "Capri, the Project Capricorn construct, living on your desktop: she narrates what your coding AI is doing and talks with you through a local AI model. Russian edition of mochiiwuff/capri-desktop.",
   "author": "mochiiwuff",
   "repository": "github:inkoffTTV/capri-desktop-russ",
@@ -27,7 +27,7 @@
     "cyberpunk",
     "edgerunners"
   ],
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "engines": {
     "node": ">=20"
   },

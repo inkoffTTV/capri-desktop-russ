@@ -17,8 +17,8 @@ export const FACES = {
   many: 'face-many.png',   // all her eyes on you
   grin: 'capri-face.png',
 };
-const KIND_FACE = { alert: 'many', done: 'look', error: 'laugh', work: 'calm', idle: 'calm', report: 'smug', chat: 'look' };
-const PRIORITY = { info: 1, idle: 1, work: 2, done: 3, error: 3, report: 3, chat: 3, alert: 4 };
+const KIND_FACE = { alert: 'many', done: 'look', error: 'laugh', work: 'calm', idle: 'calm', report: 'smug', chat: 'look', remind: 'look' };
+const PRIORITY = { info: 1, idle: 1, work: 2, done: 3, error: 3, report: 3, chat: 3, alert: 4, remind: 4 };
 const DECODE_STEP_MS = 28;
 const COUNT_MS = 700; // her report's numbers counting up
 
