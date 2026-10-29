@@ -171,6 +171,12 @@ or **Assistant (detailed)**, a proper AI assistant. Questions, explanations, cod
 answers at the length it takes, in a wider panel with paragraphs and lists kept. Still Capri, but the help comes first.
 No Claude subscription needed for any of this: a local model (Ollama, LM Studio…) is enough.
 
+**Her chat, like a proper assistant's.** The line you type in grows with what you write: Shift+Enter makes a new line,
+so a paragraph or a bit of code goes in (up to 8,000 characters as an assistant). The conversation so far shows above
+her answer, your lines as prompts, hers along a violet rule, from where she remembers it. Text in the chat can be
+selected without closing it. A finished answer copies with the button under it (and each of hers in the thread).
+**Ctrl+Alt+Space** opens her chat from any window, and closes it.
+
 **It's AI.** Her replies are written by the model, not by the show's writers: it's a fan version of her, and the chat
 panel says so every time.
 
@@ -254,6 +260,10 @@ sorry ("sorry", "my bad"…), or it wears off.
 She only catches the mouse on her actual body (pixel-precise): the rest of the screen works as usual.
 
 - **Click** her: she tells you where Claude is at (nothing going on: a **Talk to me** button, to chat with her).
+- **Middle-click** her, or **hold** her still for half a second: her **wheel**, a ring of sectors around her head with
+  what you do most: talk, status, report, the satellite, how she answers (toggles in character / assistant), teleport,
+  put away, the whole menu. Esc, a click elsewhere or the pointer wandering off closes it.
+- **Ctrl+Alt+Space**: her chat, from any window (and closes it).
 - **Drag** her: move her around. Let go mid-swing and she flies (see "Throw her").
 - **Click** the panel: it closes.
 - **Ctrl+Alt+C**: she puts herself away (into her biochip, like in the show) and all that's left of her is her mask,

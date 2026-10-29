@@ -180,6 +180,13 @@ Capri ; ou **Assistante (détaillées)**, une vraie assistante IA. Questions, ex
 plans : elle répond aussi longuement qu'il le faut, dans un panneau plus large qui garde paragraphes et listes.
 Toujours Capri, mais l'aide d'abord. Pas besoin d'abonnement Claude pour ça : un modèle local (Ollama, LM Studio…) suffit.
 
+**Son chat, comme celui d'une vraie assistante.** La ligne où tu écris grandit avec ton texte : Maj+Entrée fait une
+nouvelle ligne, donc un paragraphe ou un bout de code y passe (jusqu'à 8 000 caractères en assistante). La
+conversation jusqu'ici s'affiche au-dessus de sa réponse, tes lignes comme des prompts, les siennes le long d'un trait
+violet, depuis là où elle s'en souvient. On peut sélectionner du texte dans le chat sans le fermer. Une réponse finie se
+copie avec le bouton sous elle (et chacune des siennes dans le fil). **Ctrl+Alt+Espace** ouvre son chat depuis
+n'importe quelle fenêtre, et le ferme.
+
 **C'est une IA.** Ses réponses sont écrites par le modèle, pas par les scénaristes de la série : c'est une version
 fan d'elle, et le panneau du chat le dit à chaque fois.
 
@@ -269,6 +276,11 @@ Elle n'attrape la souris que sur son corps (au pixel près) : tout le reste de l
 
 - **Clic** sur elle : elle te dit où en est Claude (s'il ne se passe rien : un bouton **Parle-moi**, pour discuter
   avec elle).
+- **Clic du milieu** sur elle, ou **garde-la** immobile une demi-seconde : sa **roue**, un anneau de secteurs autour
+  de sa tête avec ce que tu fais le plus : lui parler, le statut, le rapport, le satellite, ses réponses (bascule dans
+  son rôle / assistante), téléporter, la ranger, tout le menu. Échap, un clic ailleurs ou le pointeur qui s'éloigne la
+  ferme.
+- **Ctrl+Alt+Espace** : son chat, depuis n'importe quelle fenêtre (et le ferme).
 - **Glisser** : tu la déplaces. Lâchée en plein mouvement, elle part (voir « Lance-la »).
 - **Clic** sur le panneau : il se ferme.
 - **Ctrl+Alt+C** : elle se range (dans son biochip, comme dans la série) et il ne reste d'elle que son masque, les yeux
