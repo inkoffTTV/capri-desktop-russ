@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/banner.svg" width="100%" alt="capri-desktop-russ"/></p>
+
 **Русский** · [English](README.en.md) · [Français](README.fr.md)
 
 > Русская редакция [mochiiwuff/capri-desktop](https://github.com/mochiiwuff/capri-desktop) (лицензия MIT): русский README
